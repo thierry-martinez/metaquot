@@ -1,0 +1,5 @@
+*~
+/_build/
+/*.opam
+.merlin
+/metapp.install
