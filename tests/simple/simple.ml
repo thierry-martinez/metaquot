@@ -14,3 +14,9 @@ let () =
       { ppat_desc = Ppat_construct ({ txt = Lident "None" }, None)}]} ->
     ()
   | _ -> assert false
+
+let () =
+  match [%type: bool * char] with
+  | [%type: int] -> assert false
+  | [%type: bool * char] -> ()
+  | _ -> assert false

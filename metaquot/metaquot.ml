@@ -93,17 +93,16 @@ let case_of_ctor (prefix : Longident.t)
     Metapp_utils.Pat.construct (Lident name)
       (List.map (fun (x, _) -> Metapp_utils.Pat.var x) args) in
   let exp =
-    Metapp_utils.apply
-      (Metapp_utils.ident (Longident.Ldot (Lident "Target", "construct")))
-      [Metapp_utils.Exp.of_longident (Ldot (prefix, name));
-        Metapp_utils.Exp.of_list
+    [%e Target.construct
+       [%meta Metapp_utils.Exp.of_longident (Ldot (prefix, name))]
+       [%meta Metapp_utils.Exp.of_list
           (args |> List.map (fun (x, arg) ->
             Metapp_utils.apply (quote_of_type_expr arg)
-              [Metapp_utils.Exp.var x]))] in
+              [Metapp_utils.Exp.var x]))]] in
   Ast_helper.Exp.case pat exp
 
 let quote_of_record (prefix : Longident.t)
-    (labels : Types.label_declaration list) : Parsetree.expression =
+    (labels : Types.label_declaration list) : Parsetree.case=
   let labels = index_variables labels in
   let pat =
     Metapp_utils.Pat.record (labels |> List.map
@@ -120,25 +119,52 @@ let quote_of_record (prefix : Longident.t)
               (Ldot (prefix, Ident.name label.ld_id));
             Metapp_utils.apply (quote_of_type_expr label.ld_type)
               [Metapp_utils.Exp.var x]]))] in
-  Ast_helper.Exp.fun_ Nolabel None pat exp
+  Ast_helper.Exp.case pat exp
 
 let quote_of_declaration (prefix : Longident.t) (name : string)
     (declaration : Types.type_declaration) : Parsetree.value_binding =
-  let exp =
+  let cases =
     match declaration.type_kind with
     | Type_abstract ->
-        Ast_helper.Exp.fun_ Nolabel None (Metapp_utils.Pat.var "x")
+        [Ast_helper.Exp.case (Metapp_utils.Pat.var "x")
           (Metapp_utils.apply
             (quote_of_type_expr (Option.get declaration.type_manifest))
-            [Metapp_utils.Exp.var "x"])
+            [Metapp_utils.Exp.var "x"])]
     | Type_variant ctors ->
-        Ast_helper.Exp.function_ (List.map (case_of_ctor prefix) ctors)
+        List.map (case_of_ctor prefix) ctors
     | Type_record (labels, _) ->
-        quote_of_record prefix labels
+        [quote_of_record prefix labels]
     | Type_open -> assert false in
+  let pat =
+    match name with
+    | "core_type" ->
+        Some [%p? { ptyp_desc = Ptyp_extension ({ txt = "t"; _ }, payload); _ }]
+    | "pattern" ->
+        Some [%p? { ppat_desc = Ppat_extension ({ txt = "p"; _ }, payload); _ }]
+    | "expression" ->
+        Some [%p? { pexp_desc = Pexp_extension ({ txt = "e"; _ }, payload); _ }]
+    | "module_type" ->
+        Some [%p? { pmty_desc = Pmty_extension ({ txt = "m"; _ }, payload); _ }]
+    | "module_expr" ->
+        Some [%p? { pmod_desc = Pmod_extension ({ txt = "m"; _ }, payload); _ }]
+    | "signature_item" ->
+        Some [%p?
+          { psig_desc = Psig_extension (({ txt = "i"; _ }, payload), _); _ }]
+    | "structure_item" ->
+        Some [%p?
+          { pstr_desc = Pstr_extension (({ txt = "i"; _ }, payload), _); _ }]
+    | _ -> None in
+  let cases =
+    match pat with
+    | None -> cases
+    | Some pat ->
+        Ast_helper.Exp.case pat [%e
+          Target.mapper Mapper.mapper Mapper.mapper
+            (Target.of_payload payload)] :: cases in
+  let exp = Ast_helper.Exp.function_ cases in
   let target =
     Ast_helper.Typ.constr
-      (Metapp_utils.loc (Longident.Ldot (Lident "Target", "t"))) [] in
+      (Metapp_utils.mkloc (Longident.Ldot (Lident "Target", "t"))) [] in
   let param_names =
     declaration.type_params |> List.map (fun (ty : Types.type_expr) ->
       match ty.desc with
@@ -146,7 +172,8 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
       | _ -> assert false) in
   let typ =
     Ast_helper.Typ.arrow Nolabel
-      (Ast_helper.Typ.constr (Metapp_utils.loc (Longident.Ldot (prefix, name)))
+      (Ast_helper.Typ.constr (Metapp_utils.mkloc
+        (Longident.Ldot (prefix, name)))
         (List.map Ast_helper.Typ.var param_names))
       target in
   let add_param ty typ =
@@ -206,83 +233,86 @@ let asttypes_signature = signature_of_cmi "asttypes.cmi"
 let parsetree_signature = signature_of_cmi "parsetree.cmi"
 ]
 
-module Quoter (Target : QuoteValueS) = struct
-  let unit = Target.of_unit
-
-  let string s = Target.of_string s
-
-  let char = Target.of_char
-
-  let location = Target.quote_location
-
-  let location_stack = Target.quote_location_stack
-
-  let bool = Target.of_bool
-
-  let longident = Target.of_longident
-
-  let list f l =
-    Target.of_list (List.map f l)
-
-  let option (quote_value : 'a -> Target.t) (option : 'a option)
-      : Target.t =
-    Target.of_option (Stdcompat.Option.map quote_value option)
-
-  [%%meta
-     quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
-       asttypes_signature]
-
-  [%%meta
-     quote_of_sig (fun names ->
-       List.mem "constant" names || List.mem "core_type" names) parsetree
-       parsetree_signature]
-
-  let quote_extension (name : string) (payload : Parsetree.payload)
-      : Target.t option =
-    match name with
-    | "expr" ->
-        Some (expression (Metapp_utils.expression_of_payload payload))
-    | "pat" ->
-        Some (pattern (Metapp_utils.pattern_of_payload payload))
-    | "str" ->
-        Some (structure (Metapp_utils.structure_of_payload payload))
-    | "stri" ->
-        Some (structure_item (Metapp_utils.structure_item_of_payload payload))
-    | "sig" ->
-        Some (signature (Metapp_utils.signature_of_payload payload))
-    | "sigi" ->
-        Some (signature_item
-          (Metapp_utils.signature_item_of_payload payload))
-    | "type" ->
-        Some (core_type (Metapp_utils.core_type_of_payload payload))
-    | _ -> None
+module type MapperS = sig
+  val mapper : Ast_mapper.mapper
 end
 
-let expr (mapper : Ast_mapper.mapper) (e : Parsetree.expression)
-    : Parsetree.expression =
-  let module Quoter = Quoter (QuoteExp) in
-  Ast_helper.with_default_loc e.pexp_loc @@ fun () ->
-  match e.pexp_desc with
-  | Pexp_extension ({ txt; _ }, payload) ->
-      begin match Quoter.quote_extension txt payload with
-      | None -> Ast_mapper.default_mapper.expr mapper e
-      | Some e -> e
-      end
-  | _ -> Ast_mapper.default_mapper.expr mapper e
 
-let pat (mapper : Ast_mapper.mapper) (p : Parsetree.pattern)
-    : Parsetree.pattern =
-  let module Quoter = Quoter (QuotePat) in
-  Ast_helper.with_default_loc p.ppat_loc @@ fun () ->
-  match p.ppat_desc with
-  | Ppat_extension ({ txt; _ }, payload) ->
-      begin match Quoter.quote_extension txt payload with
-      | None -> Ast_mapper.default_mapper.pat mapper p
-      | Some p -> p
-      end
-  | _ -> Ast_mapper.default_mapper.pat mapper p
+module Transformer (Target : QuoteValueS) = struct
+  module Quoter (Mapper : MapperS) = struct
+    let unit = Target.of_unit
 
-let mapper : Ast_mapper.mapper = { Ast_mapper.default_mapper with expr; pat }
+    let string s = Target.of_string s
+
+    let char = Target.of_char
+
+    let location = Target.quote_location
+
+    let location_stack = Target.quote_location_stack
+
+    let bool = Target.of_bool
+
+    let longident = Target.of_longident
+
+    let list f l =
+      Target.of_list (List.map f l)
+
+    let option (quote_value : 'a -> Target.t) (option : 'a option)
+        : Target.t =
+      Target.of_option (Stdcompat.Option.map quote_value option)
+
+    [%%meta
+       quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
+         asttypes_signature]
+
+    [%%meta
+       quote_of_sig (fun names ->
+         List.mem "constant" names || List.mem "core_type" names) parsetree
+         parsetree_signature]
+
+    let quote_extension (({ txt; _ }, payload) : Parsetree.extension)
+        : Target.t option =
+      match txt with
+      | "expr" ->
+          Some (expression (Metapp_utils.expression_of_payload payload))
+      | "pat" ->
+          Some (pattern (Metapp_utils.pattern_of_payload payload))
+      | "str" ->
+          Some (structure (Metapp_utils.structure_of_payload payload))
+      | "stri" ->
+          Some (structure_item (Metapp_utils.structure_item_of_payload payload))
+      | "sig" ->
+          Some (signature (Metapp_utils.signature_of_payload payload))
+      | "sigi" ->
+          Some (signature_item
+            (Metapp_utils.signature_item_of_payload payload))
+      | "type" ->
+          Some (core_type (Metapp_utils.core_type_of_payload payload))
+      | _ -> None
+  end
+
+  let transform (mapper : Ast_mapper.mapper) (e : Target.t) : Target.t =
+    let module Mapper = struct
+      let mapper = mapper
+    end in
+    let module Quoter = Quoter (Mapper) in
+    Ast_helper.with_default_loc (Target.to_loc e) @@ fun () ->
+    match
+      Stdcompat.Option.bind (Target.destruct_extension e)
+        Quoter.quote_extension
+    with
+    | Some e -> e
+    | None -> Target.mapper Ast_mapper.default_mapper mapper e
+end
+
+module TransformExp = Transformer (QuoteExp)
+
+module TransformPat = Transformer (QuotePat)
+
+let mapper : Ast_mapper.mapper = { Ast_mapper.default_mapper with
+  expr = TransformExp.transform;
+  pat = TransformPat.transform;
+}
 
 let rewriter _config _cookies : Ast_mapper.mapper =
   mapper

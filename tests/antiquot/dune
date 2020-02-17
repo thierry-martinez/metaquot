@@ -1,0 +1,5 @@
+(test
+  (name antiquot)
+  (preprocess (pps metaquot))
+  (flags -dsource)
+  (libraries compiler-libs.common))
