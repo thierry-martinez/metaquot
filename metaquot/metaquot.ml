@@ -1,32 +1,37 @@
-[%%metapackage "metapp.utils"]
-[%%metapackage "findlib"]
+(** This module does not have an associated .mli file because its
+signature depends dynamically from the contents of [Parsetree].
+
+The module mainly provides two sub-modules [Metaquot.Exp] and
+[Metaquot.Pat], which provides lifters for expressions and patterns
+respectively. *)
+
+[%%metapackage metapp, findlib]
 [%%metaflags ["-open"; "Stdcompat"]]
 
 let expression_of_default_loc () : Parsetree.expression =
-  Metapp_utils.apply (Metapp_utils.ident (Lident "!"))
-    [Metapp_utils.ident (Ldot (Lident "Ast_helper", "default_loc"))]
+  Metapp.apply (Metapp.ident (Lident "!"))
+    [Metapp.ident (Ldot (Lident "Ast_helper", "default_loc"))]
 
 module type QuoteValueS = sig
-  include Metapp_utils.ValueS
+  include Metapp.ValueS
 
   val quote_location : Location.t -> t
 
-  (* OCaml >= 4.10.0 *)
   val quote_location_stack : _ -> t
 end
 
 module QuoteExp : QuoteValueS with type t = Parsetree.expression = struct
-  include Metapp_utils.Exp
+  include Metapp.Exp
 
   let quote_location (_ : Location.t) : Parsetree.expression =
     expression_of_default_loc ()
 
   let quote_location_stack (_ : _) : Parsetree.expression =
-    Metapp_utils.Exp.nil ()
+    Metapp.Exp.nil ()
 end
 
 module QuotePat : QuoteValueS with type t = Parsetree.pattern = struct
-  include Metapp_utils.Pat
+  include Metapp.Pat
 
   let quote_location (_ : Location.t) : Parsetree.pattern =
     Ast_helper.Pat.any ()
@@ -52,7 +57,7 @@ let quote_of_path (path : Path.t) : Parsetree.expression =
     | lident ->
         failwith (Format.asprintf "quote_of_path: %s"
           (String.concat "." (Longident.flatten lident))) in
-  Metapp_utils.Exp.var (quote_name name)
+  Metapp.Exp.var (quote_name name)
 
 let index_variables args =
   List.mapi (fun i arg -> Printf.sprintf "x%d" i, arg) args
@@ -60,23 +65,23 @@ let index_variables args =
 let rec quote_of_type_expr (ty : Types.type_expr) : Parsetree.expression =
   match ty.desc with
   | Tvar x ->
-      Metapp_utils.Exp.var (quote_name (Option.get x))
+      Metapp.Exp.var (quote_name (Option.get x))
   | Tconstr (path, [], _) ->
       quote_of_path path
   | Tconstr (path, args, _) ->
-      Metapp_utils.apply (quote_of_path path) (List.map quote_of_type_expr args)
+      Metapp.apply (quote_of_path path) (List.map quote_of_type_expr args)
   | Ttuple args ->
       let args = index_variables args in
       let pat =
-        Metapp_utils.Pat.tuple
-          (List.map (fun (x, _) -> Metapp_utils.Pat.var x) args) in
+        Metapp.Pat.tuple
+          (List.map (fun (x, _) -> Metapp.Pat.var x) args) in
       let exp =
-        Metapp_utils.apply
-          (Metapp_utils.ident (Longident.Ldot (Lident "Target", "tuple")))
-          [Metapp_utils.Exp.of_list
+        Metapp.apply
+          (Metapp.ident (Longident.Ldot (Lident "Target", "tuple")))
+          [Metapp.Exp.list
             (args |> List.map (fun (x, arg) ->
-              Metapp_utils.apply (quote_of_type_expr arg)
-                [Metapp_utils.Exp.var x]))] in
+              Metapp.apply (quote_of_type_expr arg)
+                [Metapp.Exp.var x]))] in
       Ast_helper.Exp.fun_ Nolabel None pat exp
   | _ ->
       assert false
@@ -90,35 +95,42 @@ let case_of_ctor (prefix : Longident.t)
   let args = index_variables args in
   let name = Ident.name declaration.cd_id in
   let pat =
-    Metapp_utils.Pat.construct (Lident name)
-      (List.map (fun (x, _) -> Metapp_utils.Pat.var x) args) in
+    Metapp.Pat.construct (Lident name)
+      (List.map (fun (x, _) -> Metapp.Pat.var x) args) in
   let exp =
     [%e Target.construct
-       [%meta Metapp_utils.Exp.of_longident (Ldot (prefix, name))]
-       [%meta Metapp_utils.Exp.of_list
+       [%meta Metapp.Exp.of_longident (Ldot (prefix, name))]
+       [%meta Metapp.Exp.list
           (args |> List.map (fun (x, arg) ->
-            Metapp_utils.apply (quote_of_type_expr arg)
-              [Metapp_utils.Exp.var x]))]] in
+            Metapp.apply (quote_of_type_expr arg)
+              [Metapp.Exp.var x]))]] in
   Ast_helper.Exp.case pat exp
 
 let quote_of_record (prefix : Longident.t)
     (labels : Types.label_declaration list) : Parsetree.case=
   let labels = index_variables labels in
   let pat =
-    Metapp_utils.Pat.record (labels |> List.map
+    Metapp.Pat.record (labels |> List.map
       (fun (x, (label : Types.label_declaration)) ->
         (Longident.Lident (Ident.name label.ld_id),
-          Metapp_utils.Pat.var x))) in
+          Metapp.Pat.var x))) in
   let exp =
-    Metapp_utils.apply
-      (Metapp_utils.ident (Longident.Ldot (Lident "Target", "record")))
-      [Metapp_utils.Exp.of_list
+    Metapp.apply
+      (Metapp.ident (Longident.Ldot (Lident "Target", "record")))
+      [Metapp.Exp.list
         (labels |> List.map (fun (x, (label : Types.label_declaration)) ->
-          Metapp_utils.Exp.tuple [
-            Metapp_utils.Exp.of_longident
-              (Ldot (prefix, Ident.name label.ld_id));
-            Metapp_utils.apply (quote_of_type_expr label.ld_type)
-              [Metapp_utils.Exp.var x]]))] in
+          let name = Ident.name label.ld_id in
+          let value =
+            match name with
+            | "pexp_loc_stack" | "ppat_loc_stack" ->
+                [%e Target.quote_location_stack ()]
+            | _ ->
+                Metapp.apply (quote_of_type_expr label.ld_type)
+                  [Metapp.Exp.var x] in
+          Metapp.Exp.tuple [
+            Metapp.Exp.of_longident
+              (Ldot (prefix, name));
+            value]))] in
   Ast_helper.Exp.case pat exp
 
 let quote_of_declaration (prefix : Longident.t) (name : string)
@@ -126,10 +138,10 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
   let cases =
     match declaration.type_kind with
     | Type_abstract ->
-        [Ast_helper.Exp.case (Metapp_utils.Pat.var "x")
-          (Metapp_utils.apply
+        [Ast_helper.Exp.case (Metapp.Pat.var "x")
+          (Metapp.apply
             (quote_of_type_expr (Option.get declaration.type_manifest))
-            [Metapp_utils.Exp.var "x"])]
+            [Metapp.Exp.var "x"])]
     | Type_variant ctors ->
         List.map (case_of_ctor prefix) ctors
     | Type_record (labels, _) ->
@@ -164,7 +176,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
   let exp = Ast_helper.Exp.function_ cases in
   let target =
     Ast_helper.Typ.constr
-      (Metapp_utils.mkloc (Longident.Ldot (Lident "Target", "t"))) [] in
+      (Metapp.mkloc (Longident.Ldot (Lident "Target", "t"))) [] in
   let param_names =
     declaration.type_params |> List.map (fun (ty : Types.type_expr) ->
       match ty.desc with
@@ -172,7 +184,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
       | _ -> assert false) in
   let typ =
     Ast_helper.Typ.arrow Nolabel
-      (Ast_helper.Typ.constr (Metapp_utils.mkloc
+      (Ast_helper.Typ.constr (Metapp.mkloc
         (Longident.Ldot (prefix, name)))
         (List.map Ast_helper.Typ.var param_names))
       target in
@@ -183,13 +195,13 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
   let typ =
     match param_names with
     | [] -> typ
-    | _ -> Metapp_utils.Typ.poly param_names typ in
+    | _ -> Metapp.Typ.poly param_names typ in
   let add_param name exp =
-    Ast_helper.Exp.fun_ Nolabel None (Metapp_utils.Pat.var (quote_name name))
+    Ast_helper.Exp.fun_ Nolabel None (Metapp.Pat.var (quote_name name))
       exp in
   let exp = List.fold_right add_param param_names exp in
   let pat =
-    Ast_helper.Pat.constraint_ (Metapp_utils.Pat.var (quote_name name)) typ in
+    Ast_helper.Pat.constraint_ (Metapp.Pat.var (quote_name name)) typ in
   Ast_helper.Vb.mk pat exp
 
 let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
@@ -199,7 +211,7 @@ let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
     | None -> accu
     | Some (rec_flag, group) -> (rec_flag, List.rev group) :: accu in
   let add_item (group, accu) (item : Types.signature_item) =
-    match Metapp_utils.destruct_sig_type item with
+    match Metapp.destruct_sig_type item with
     | Some { id; decl; rec_status; _ } ->
         let ((rec_status, accu_group), accu) =
           match (rec_status, group) with
@@ -219,7 +231,7 @@ let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
       (List.map (fun (id, decl) ->
         quote_of_declaration prefix (Ident.name id) decl)
         declarations)) in
-  Metapp_utils.include_structure s
+  Metapp.include_structure s
 
 let () = Findlib.init ()
 
@@ -237,8 +249,11 @@ module type MapperS = sig
   val mapper : Ast_mapper.mapper
 end
 
+module DefaultMapper = struct
+  let mapper = Ast_mapper.default_mapper
+end
 
-module Transformer (Target : QuoteValueS) = struct
+module Make (Target : QuoteValueS) = struct
   module Quoter (Mapper : MapperS) = struct
     let unit = Target.of_unit
 
@@ -255,11 +270,11 @@ module Transformer (Target : QuoteValueS) = struct
     let longident = Target.of_longident
 
     let list f l =
-      Target.of_list (List.map f l)
+      Target.list (List.map f l)
 
     let option (quote_value : 'a -> Target.t) (option : 'a option)
         : Target.t =
-      Target.of_option (Stdcompat.Option.map quote_value option)
+      Target.option (Stdcompat.Option.map quote_value option)
 
     [%%meta
        quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
@@ -270,28 +285,29 @@ module Transformer (Target : QuoteValueS) = struct
          List.mem "constant" names || List.mem "core_type" names) parsetree
          parsetree_signature]
 
-    let quote_extension (({ txt; _ }, payload) : Parsetree.extension)
+    let quote_extension (({ txt; loc }, payload) : Parsetree.extension)
         : Target.t option =
+      Ast_helper.with_default_loc loc @@ fun () ->
       match txt with
       | "expr" ->
-          Some (expression (Metapp_utils.expression_of_payload payload))
+          Some (expression (Metapp.expression_of_payload payload))
       | "pat" ->
-          Some (pattern (Metapp_utils.pattern_of_payload payload))
+          Some (pattern (Metapp.pattern_of_payload payload))
       | "str" ->
-          Some (structure (Metapp_utils.structure_of_payload payload))
+          Some (structure (Metapp.structure_of_payload payload))
       | "stri" ->
-          Some (structure_item (Metapp_utils.structure_item_of_payload payload))
+          Some (structure_item (Metapp.structure_item_of_payload payload))
       | "sig" ->
-          Some (signature (Metapp_utils.signature_of_payload payload))
+          Some (signature (Metapp.signature_of_payload payload))
       | "sigi" ->
           Some (signature_item
-            (Metapp_utils.signature_item_of_payload payload))
+            (Metapp.signature_item_of_payload payload))
       | "type" ->
-          Some (core_type (Metapp_utils.core_type_of_payload payload))
+          Some (core_type (Metapp.core_type_of_payload payload))
       | _ -> None
   end
 
-  let transform (mapper : Ast_mapper.mapper) (e : Target.t) : Target.t =
+  let lift (mapper : Ast_mapper.mapper) (e : Target.t) : Target.t =
     let module Mapper = struct
       let mapper = mapper
     end in
@@ -303,21 +319,10 @@ module Transformer (Target : QuoteValueS) = struct
     with
     | Some e -> e
     | None -> Target.mapper Ast_mapper.default_mapper mapper e
+
+  include Quoter (DefaultMapper)
 end
 
-module TransformExp = Transformer (QuoteExp)
+module Exp = Make (QuoteExp)
 
-module TransformPat = Transformer (QuotePat)
-
-let mapper : Ast_mapper.mapper = { Ast_mapper.default_mapper with
-  expr = TransformExp.transform;
-  pat = TransformPat.transform;
-}
-
-let rewriter _config _cookies : Ast_mapper.mapper =
-  mapper
-
-let () =
-  Migrate_parsetree.Driver.register ~name:"metaquot"
-    (module Migrate_parsetree.OCaml_current)
-    rewriter
+module Pat = Make (QuotePat)
