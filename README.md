@@ -56,7 +56,7 @@ and insert expressions or patterns (_anti-quotations_).
 |`[%i ...]`    |`Parsetree.signature_item` or `Parsetree.structure_item`|
 
 In addition to the syntax extension, the `metaquot` package provides
-the [`Metaquot`] module that contains lifters: the `Metaquot.Exp`
+the [`Metaquot`] module, which contains lifters: the `Metaquot.Exp`
 module lifts to expressions and `Metaquot.Pat` lifts to patterns. For
 instance, `Metaquot.Exp.pattern : Parsetree.pattern ->
 Parsetree.expression` is a function that returns an OCaml expression
