@@ -1,0 +1,8 @@
+(library
+  (name metaquot_ppx)
+  (public_name metaquot.ppx)
+  (kind ppx_rewriter)
+; -warning 40: Constructor or label name used out of scope. (OCaml <=4.06.0)
+  (flags -w -40)
+  (libraries ocaml-migrate-parsetree compiler-libs metapp stdcompat
+    metaquot))
