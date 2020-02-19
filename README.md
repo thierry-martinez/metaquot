@@ -1,4 +1,4 @@
-# metaquot: OCaml syntax extension for quoting code
+# `metaquot`: OCaml syntax extension for quoting code
 
 `metaquot` is a PPX rewriter that provides several extensions for
 quoting OCaml code in expressions, _à la_ [`ppxtools.ppx_metaquot`]
