@@ -18,7 +18,7 @@
 metaquot allows to quote OCaml code.
 ")
  (depends
-  (ocaml (>= 4.03.0))
+  (ocaml (and (>= 4.03.0) (< 4.11.0)))
   (stdcompat (>= 12))
   (ocaml-migrate-parsetree (>= 1.5.0))
   (ocamlfind (>= 1.8.1))
