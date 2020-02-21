@@ -171,7 +171,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     | None -> cases
     | Some pat ->
         Ast_helper.Exp.case pat [%e
-          Target.mapper Mapper.mapper Mapper.mapper
+          Target.mapper.get Mapper.mapper Mapper.mapper
             (Target.of_payload payload)] :: cases in
   let exp = Ast_helper.Exp.function_ cases in
   let target =
@@ -195,7 +195,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
   let typ =
     match param_names with
     | [] -> typ
-    | _ -> Metapp.Typ.poly param_names typ in
+    | _ -> Metapp.Typ.poly (List.map Metapp.mkloc param_names) typ in
   let add_param name exp =
     Ast_helper.Exp.fun_ Nolabel None (Metapp.Pat.var (quote_name name))
       exp in
@@ -290,20 +290,19 @@ module Make (Target : QuoteValueS) = struct
       Ast_helper.with_default_loc loc @@ fun () ->
       match txt with
       | "expr" ->
-          Some (expression (Metapp.expression_of_payload payload))
+          Some (expression (Metapp.Exp.of_payload payload))
       | "pat" ->
-          Some (pattern (Metapp.pattern_of_payload payload))
+          Some (pattern (Metapp.Pat.of_payload payload))
       | "str" ->
-          Some (structure (Metapp.structure_of_payload payload))
+          Some (structure (Metapp.Str.of_payload payload))
       | "stri" ->
-          Some (structure_item (Metapp.structure_item_of_payload payload))
+          Some (structure_item (Metapp.Stri.of_payload payload))
       | "sig" ->
-          Some (signature (Metapp.signature_of_payload payload))
+          Some (signature (Metapp.Sig.of_payload payload))
       | "sigi" ->
-          Some (signature_item
-            (Metapp.signature_item_of_payload payload))
+          Some (signature_item (Metapp.Sigi.of_payload payload))
       | "type" ->
-          Some (core_type (Metapp.core_type_of_payload payload))
+          Some (core_type (Metapp.Typ.of_payload payload))
       | _ -> None
   end
 
@@ -318,7 +317,7 @@ module Make (Target : QuoteValueS) = struct
         Quoter.quote_extension
     with
     | Some e -> e
-    | None -> Target.mapper Ast_mapper.default_mapper mapper e
+    | None -> Target.mapper.get Ast_mapper.default_mapper mapper e
 
   include Quoter (DefaultMapper)
 end
