@@ -1,6 +1,8 @@
 (library
   (public_name metaquot)
   (preprocess (pps metapp metapp.ppx))
+; +warning 32: Unused value declaration.
+; +warning 34: Unused type declaration.
 ; -warning 40: Constructor or label name used out of scope. (OCaml <=4.06.0)
-  (flags -w -40)
+  (flags -open Stdcompat -w +32+34-40)
   (libraries compiler-libs metapp stdcompat))

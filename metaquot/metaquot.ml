@@ -274,7 +274,7 @@ module Make (Target : QuoteValueS) = struct
 
     let option (quote_value : 'a -> Target.t) (option : 'a option)
         : Target.t =
-      Target.option (Stdcompat.Option.map quote_value option)
+      Target.option (Option.map quote_value option)
 
     [%%meta
        quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
@@ -312,10 +312,7 @@ module Make (Target : QuoteValueS) = struct
     end in
     let module Quoter = Quoter (Mapper) in
     Ast_helper.with_default_loc (Target.to_loc e) @@ fun () ->
-    match
-      Stdcompat.Option.bind (Target.destruct_extension e)
-        Quoter.quote_extension
-    with
+    match Option.bind (Target.destruct_extension e) Quoter.quote_extension with
     | Some e -> e
     | None -> Target.mapper.get Ast_mapper.default_mapper mapper e
 
