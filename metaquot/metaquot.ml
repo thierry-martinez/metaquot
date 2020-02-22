@@ -6,7 +6,7 @@ The module mainly provides two sub-modules [Metaquot.Exp] and
 respectively. *)
 
 [%%metapackage metapp, findlib]
-[%%metaflags ["-open"; "Stdcompat"]]
+[%%metaflag "-open", "Stdcompat"]
 
 let expression_of_default_loc () : Parsetree.expression =
   Metapp.apply (Metapp.ident (Lident "!"))
@@ -231,7 +231,7 @@ let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
       (List.map (fun (id, decl) ->
         quote_of_declaration prefix (Ident.name id) decl)
         declarations)) in
-  Metapp.include_structure s
+  Metapp.Stri.of_list s
 
 let () = Findlib.init ()
 
