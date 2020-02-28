@@ -23,4 +23,4 @@ metaquot allows to quote OCaml code.
   (ocaml-migrate-parsetree (>= 1.5.0))
   (ocamlfind (>= 1.8.1))
   (dune (>= 1.11.0))
-  metapp))
+  (metapp (>= 0.1.0))))
