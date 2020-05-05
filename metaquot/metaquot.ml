@@ -303,6 +303,8 @@ module Make (Target : QuoteValueS) = struct
           Some (signature_item (Metapp.Sigi.of_payload payload))
       | "type" ->
           Some (core_type (Metapp.Typ.of_payload payload))
+      | "lid" ->
+          Some (longident (Metapp.longident_of_payload payload))
       | _ -> None
   end
 
