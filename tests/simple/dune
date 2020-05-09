@@ -1,4 +1,4 @@
 (test
   (name simple)
   (preprocess (pps metaquot.ppx))
-  (libraries compiler-libs.common))
+  (libraries compiler-libs.common metapp))

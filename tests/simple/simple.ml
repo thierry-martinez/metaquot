@@ -11,10 +11,13 @@ let () =
 let () =
   match [%pat? ("a", None)] with
   | { ppat_desc = Ppat_tuple [
-      { ppat_desc = Ppat_constant (Pconst_string ("a", None)); _ };
+      { ppat_desc = Ppat_constant constant; _ };
       { ppat_desc =
         Ppat_construct ({ txt = Lident "None"; _ }, None); _ }]; _ } ->
-    ()
+    begin match Metapp.destruct_string_constant constant with
+    | Some { s = "a"; delim = None; _ } -> ()
+    | _ -> assert false
+    end
   | _ -> assert false
 
 let () =
