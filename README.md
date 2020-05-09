@@ -40,6 +40,7 @@ The following extensions are provided.
 |`[%sigi: ...]`|`Parsetree.signature_item`|
 |`[%str ...]`  |`Parsetree.structure`     |
 |`[%stri ...]` |`Parsetree.structure_item`|
+|`[%lid ...]`  |`Parsetree.longident`     |
 
 The produced AST uses `!Ast_helper.default_loc` as location: you may
 change the location with `Ast_helper.with_default_loc`.
