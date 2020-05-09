@@ -211,7 +211,7 @@ let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
     | None -> accu
     | Some (rec_flag, group) -> (rec_flag, List.rev group) :: accu in
   let add_item (group, accu) (item : Types.signature_item) =
-    match Metapp.destruct_sig_type item with
+    match Metapp.Types.Sigi.destruct_sig_type item with
     | Some { id; decl; rec_status; _ } ->
         let ((rec_status, accu_group), accu) =
           match (rec_status, group) with
