@@ -1,8 +1,8 @@
-# Version 0.2.0
+# Version 0.2.0, 2020-02-11
 
 - Compatibility with OCaml 4.11.0
 
-- Quotation [%lid ...]
+- Quotation `[%lid ...]` for `Longident.t`
 
 # Version 0.1.0, 2020-02-28
 
