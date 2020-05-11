@@ -3,7 +3,7 @@
 (generate_opam_files true)
 
 (name metaquot)
-(license BSD)
+(license "BSD-2-Clause")
 (maintainers "Thierry Martinez <thierry.martinez@inria.fr>")
 (authors "Thierry Martinez <thierry.martinez@inria.fr>")
 (source (uri "git+https://github.com/thierry-martinez/metaquot.git"))
