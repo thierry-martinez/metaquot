@@ -9,8 +9,8 @@ respectively. *)
 [%%metaflag "-open", "Stdcompat"]
 
 let expression_of_default_loc () : Parsetree.expression =
-  Metapp.apply (Metapp.ident (Lident "!"))
-    [Metapp.ident (Ldot (Lident "Ast_helper", "default_loc"))]
+  Metapp.apply (Metapp.Exp.var "!")
+    [Metapp.Exp.ident (Ldot (Lident "Ast_helper", "default_loc"))]
 
 module type QuoteValueS = sig
   include Metapp.ValueS
@@ -77,7 +77,7 @@ let rec quote_of_type_expr (ty : Types.type_expr) : Parsetree.expression =
           (List.map (fun (x, _) -> Metapp.Pat.var x) args) in
       let exp =
         Metapp.apply
-          (Metapp.ident (Longident.Ldot (Lident "Target", "tuple")))
+          (Metapp.Exp.ident (Ldot (Lident "Target", "tuple")))
           [Metapp.Exp.list
             (args |> List.map (fun (x, arg) ->
               Metapp.apply (quote_of_type_expr arg)
@@ -116,7 +116,7 @@ let quote_of_record (prefix : Longident.t)
           Metapp.Pat.var x))) in
   let exp =
     Metapp.apply
-      (Metapp.ident (Longident.Ldot (Lident "Target", "record")))
+      (Metapp.Exp.ident (Ldot (Lident "Target", "record")))
       [Metapp.Exp.list
         (labels |> List.map (fun (x, (label : Types.label_declaration)) ->
           let name = Ident.name label.ld_id in
@@ -304,7 +304,7 @@ module Make (Target : QuoteValueS) = struct
       | "type" ->
           Some (core_type (Metapp.Typ.of_payload payload))
       | "lid" ->
-          Some (longident (Metapp.longident_of_payload payload))
+          Some (longident (Metapp.Longident.of_payload payload))
       | _ -> None
   end
 
