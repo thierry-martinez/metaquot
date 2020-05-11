@@ -20,7 +20,7 @@ metaquot allows to quote OCaml code.
  (depends
   (ocaml (and (>= 4.03.0) (< 4.12.0)))
   (stdcompat (>= 12))
-  (ocaml-migrate-parsetree (>= 1.5.0))
+  (ocaml-migrate-parsetree (>= 1.7.3))
   (ocamlfind (>= 1.8.1))
   (dune (>= 1.11.0))
-  (metapp (>= 0.1.0))))
+  (metapp (>= 0.2.0))))
