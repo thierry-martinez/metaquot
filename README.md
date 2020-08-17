@@ -56,6 +56,27 @@ and insert expressions or patterns (_anti-quotations_).
 |`[%m ...]`    |`Parsetree.module_type` or `Parsetree.module_expr`      |
 |`[%i ...]`    |`Parsetree.signature_item` or `Parsetree.structure_item`|
 
+To insert expressions or patterns to syntactic places where
+anti-quotations are not supported, substitutions can be specified in attributes.
+For instance:
+
+- `[%str module M = struct ... end][@subst let M : string = s]`
+  defines a module, the name of which is given by an expression `s` of
+  type `string`
+
+- `[%str match x with c -> .][@subst let c : list = cases]` constructs
+  a pattern matching, the cases of which is given by an expression
+  `cases` of type `case list` (note that the substitution is specified by
+  giving only the type name `list`).
+
+More generally, substitutions are given using let-binding syntax,
+specifying the name of the substituted identifier, the name of the
+type of the AST node to be replaced, and the expression or the pattern
+to use for the substitution: when the identifier appears, the closest
+parent AST node of the given type name is replaced by the given
+expression or pattern. Currently, only binding variable names are
+supported for patterns.
+
 In addition to the syntax extension, the `metaquot` package provides
 the [`Metaquot`] module, which contains lifters: the `Metaquot.Exp`
 module lifts to expressions and `Metaquot.Pat` lifts to patterns. For
@@ -64,3 +85,4 @@ Parsetree.expression` is a function that returns an OCaml expression
 that builds the AST corresponding to the given pattern.
 
 [`Metaquot`]: https://github.com/thierry-martinez/metaquot/blob/master/metaquot/metaquot.ml
+

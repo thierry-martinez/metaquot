@@ -18,6 +18,8 @@ module type QuoteValueS = sig
   val quote_location : Location.t -> t
 
   val quote_location_stack : _ -> t
+
+  val subst_of_expr : Parsetree.expression -> t
 end
 
 module QuoteExp : QuoteValueS with type t = Parsetree.expression = struct
@@ -28,6 +30,8 @@ module QuoteExp : QuoteValueS with type t = Parsetree.expression = struct
 
   let quote_location_stack (_ : _) : Parsetree.expression =
     Metapp.Exp.nil ()
+
+  let subst_of_expr e = e
 end
 
 module QuotePat : QuoteValueS with type t = Parsetree.pattern = struct
@@ -38,6 +42,13 @@ module QuotePat : QuoteValueS with type t = Parsetree.pattern = struct
 
   let quote_location_stack (_ : _) : Parsetree.pattern =
     Ast_helper.Pat.any ()
+
+  let subst_of_expr (e : Parsetree.expression) =
+    match e with
+    | { pexp_desc = Pexp_ident { txt = Lident txt; loc }} ->
+        Ast_helper.Pat.var { txt; loc }
+    | { pexp_loc; _ } ->
+        Location.raise_errorf ~loc:pexp_loc "Simple variable expected"
 end
 
 [%%metadef
@@ -66,10 +77,9 @@ let rec quote_of_type_expr (ty : Types.type_expr) : Parsetree.expression =
   match ty.desc with
   | Tvar x ->
       Metapp.Exp.var (quote_name (Option.get x))
-  | Tconstr (path, [], _) ->
-      quote_of_path path
   | Tconstr (path, args, _) ->
-      Metapp.apply (quote_of_path path) (List.map quote_of_type_expr args)
+      Metapp.apply (quote_of_path path) ~labels:["subst", [%e subst]]
+        (List.map quote_of_type_expr args)
   | Ttuple args ->
       let args = index_variables args in
       let pat =
@@ -165,6 +175,14 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     | "structure_item" ->
         Some [%p?
           { pstr_desc = Pstr_extension (({ txt = "i"; _ }, payload), _); _ }]
+    | "class_type" ->
+        Some [%p? { pcty_desc = Pcty_extension ({ txt = "c"; _ }, payload); _ }]
+    | "class_type_field" ->
+        Some [%p? { pctf_desc = Pctf_extension ({ txt = "c"; _ }, payload); _ }]
+    | "class_expr" ->
+        Some [%p? { pcl_desc = Pcl_extension ({ txt = "c"; _ }, payload); _ }]
+    | "class_field" ->
+        Some [%p? { pcf_desc = Pcf_extension ({ txt = "c"; _ }, payload); _ }]
     | _ -> None in
   let cases =
     match pat with
@@ -173,7 +191,9 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
         Ast_helper.Exp.case pat [%e
           Target.mapper.get Mapper.mapper Mapper.mapper
             (Target.of_payload payload)] :: cases in
-  let exp = Ast_helper.Exp.function_ cases in
+  let exp = [%e fun x ->
+    try [%meta (Ast_helper.Exp.match_ [%e x] cases)]
+    with Subst { ty = [%meta Metapp.Pat.of_string name]; target } -> target] in
   let target =
     Ast_helper.Typ.constr
       (Metapp.mkloc (Longident.Ldot (Lident "Target", "t"))) [] in
@@ -192,6 +212,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     Ast_helper.Typ.arrow Nolabel
       (Ast_helper.Typ.arrow Nolabel (Ast_helper.Typ.var ty) target) typ in
   let typ = List.fold_right add_param param_names typ in
+  let typ = [%t: ?subst:(subst StringMap.t) -> [%meta typ]] in
   let typ =
     match param_names with
     | [] -> typ
@@ -200,6 +221,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     Ast_helper.Exp.fun_ Nolabel None (Metapp.Pat.var (quote_name name))
       exp in
   let exp = List.fold_right add_param param_names exp in
+  let exp = [%e fun ?(subst = StringMap.empty) -> [%meta exp]] in
   let pat =
     Ast_helper.Pat.constraint_ (Metapp.Pat.var (quote_name name)) typ in
   Ast_helper.Vb.mk pat exp
@@ -253,58 +275,118 @@ module DefaultMapper = struct
   let mapper = Ast_mapper.default_mapper
 end
 
+module StringMap = Map.Make (String)
+
 module Make (Target : QuoteValueS) = struct
   module Quoter (Mapper : MapperS) = struct
-    let unit = Target.of_unit
+    type subst = {
+        ty : string;
+        target : Target.t;
+      }
 
-    let string s = Target.of_string s
+    exception Subst of subst
 
-    let char = Target.of_char
+    let unit ?subst = Target.of_unit
 
-    let location = Target.quote_location
+    let string ?subst = Target.of_string
 
-    let location_stack = Target.quote_location_stack
+    let char ?subst = Target.of_char
 
-    let bool = Target.of_bool
+    let location ?subst = Target.quote_location
 
-    let longident = Target.of_longident
+    let location_stack ?subst = Target.quote_location_stack
 
-    let list f l =
-      Target.list (List.map f l)
+    let bool ?subst = Target.of_bool
 
-    let option (quote_value : 'a -> Target.t) (option : 'a option)
+    let longident ?(subst = StringMap.empty) (l : Longident.t) =
+      try
+        match
+          match l with
+          | Lident s -> StringMap.find_opt s subst
+          | _ -> None
+        with
+        | None -> Target.of_longident l
+        | Some subst -> raise (Subst subst)
+      with Subst { ty = "longident"; target } -> target
+
+    let list ?subst f l =
+      try
+        Target.list (List.map f l)
+      with Subst { ty = "list"; target } -> target
+
+    let option ?subst (quote_value : 'a -> Target.t) (option : 'a option)
         : Target.t =
-      Target.option (Option.map quote_value option)
+      try
+        Target.option (Option.map quote_value option)
+      with Subst { ty = "option"; target } -> target
 
     [%%meta
        quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
          asttypes_signature]
+
+    (* redefined here after constants, because we do not want substitutions on
+       string constants. *)
+    let string ?(subst = StringMap.empty) (s : string) =
+      try
+        match StringMap.find_opt s subst with
+        | None -> Target.of_string s
+        | Some subst -> raise (Subst subst)
+      with Subst { ty = "string"; target } -> target
 
     [%%meta
        quote_of_sig (fun names ->
          List.mem "constant" names || List.mem "core_type" names) parsetree
          parsetree_signature]
 
-    let quote_extension (({ txt; loc }, payload) : Parsetree.extension)
+    let subst_of_value_binding (binding : Parsetree.value_binding) :
+        string * subst =
+      match binding with
+      | { pvb_pat = { ppat_desc = Ppat_constraint ({
+            ppat_desc = Ppat_var { txt = identifier; _ }
+              | Ppat_construct ({ txt = Lident identifier; _ }, None)},
+            { ptyp_desc = Ptyp_constr ({ txt = Lident ty; _ }, [])
+              | Ptyp_poly (_, { ptyp_desc =
+                  Ptyp_constr ({ txt = Lident ty; _ }, [])})})};
+          pvb_expr = expr } ->
+          let expr =
+            match expr with
+            | { pexp_desc = Pexp_constraint (expr, _); _ } -> expr
+            | _ -> expr in
+          identifier, { ty; target = Target.subst_of_expr expr }
+      | { pvb_loc; _ } ->
+          Location.raise_errorf ~loc:pvb_loc "Typed value-binding expected"
+
+    let parse_subst (subst : Parsetree.attribute) : subst StringMap.t =
+      match Metapp.Stri.of_payload (Metapp.Attr.payload subst) with
+      | { pstr_desc = Pstr_value (Nonrecursive, values)} ->
+          List.map subst_of_value_binding values |> List.to_seq |>
+          StringMap.of_seq
+      | { pstr_loc; _ } ->
+          Location.raise_errorf ~loc:pstr_loc "Let-binding expected"
+
+    let quote_extension
+        ((({ txt; loc }, payload), attrs) : Metapp.destruct_extension)
         : Target.t option =
       Ast_helper.with_default_loc loc @@ fun () ->
+      let subst =
+        Metapp.Attr.find "subst" attrs |> Option.map parse_subst in
       match txt with
       | "expr" ->
-          Some (expression (Metapp.Exp.of_payload payload))
+          Some (expression ?subst (Metapp.Exp.of_payload payload))
       | "pat" ->
-          Some (pattern (Metapp.Pat.of_payload payload))
+          Some (pattern ?subst (Metapp.Pat.of_payload payload))
       | "str" ->
-          Some (structure (Metapp.Str.of_payload payload))
+          Some (structure ?subst (Metapp.Str.of_payload payload))
       | "stri" ->
-          Some (structure_item (Metapp.Stri.of_payload payload))
+          Some (structure_item ?subst (Metapp.Stri.of_payload payload))
       | "sig" ->
-          Some (signature (Metapp.Sig.of_payload payload))
+          Some (signature ?subst (Metapp.Sig.of_payload payload))
       | "sigi" ->
-          Some (signature_item (Metapp.Sigi.of_payload payload))
+          Some (signature_item ?subst (Metapp.Sigi.of_payload payload))
       | "type" ->
-          Some (core_type (Metapp.Typ.of_payload payload))
+          Some (core_type ?subst (Metapp.Typ.of_payload payload))
       | "lid" ->
-          Some (longident (Metapp.Longident.of_payload payload))
+          Some (longident ?subst (Metapp.Longident.of_payload payload))
       | _ -> None
   end
 

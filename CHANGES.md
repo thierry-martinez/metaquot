@@ -1,4 +1,8 @@
-# Version 0.2.0, 2020-02-11
+# Next version
+
+- Support for substitutions
+
+# Version 0.2.0, 2020-05-11
 
 - Compatibility with OCaml 4.11.0
 
