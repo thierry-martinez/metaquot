@@ -1,12 +1,13 @@
-let mapper : Ast_mapper.mapper = { Ast_mapper.default_mapper with
-  expr = Metaquot.Exp.lift;
-  pat = Metaquot.Pat.lift;
-}
+let mapper = object (self)
+  inherit Ppxlib.Ast_traverse.map as super
 
-let rewriter _config _cookies : Ast_mapper.mapper =
-  mapper
+  method! expression =
+    Metaquot.Exp.lift { expression = super#expression; pattern = super#pattern }
+
+  method! pattern =
+    Metaquot.Pat.lift { expression = super#expression; pattern = super#pattern }
+end
+
 
 let () =
-  Migrate_parsetree.Driver.register ~name:"metaquot"
-    (module Migrate_parsetree.OCaml_current)
-    rewriter
+  Ppxlib.Driver.register_transformation "metaquot" ~impl:mapper#structure

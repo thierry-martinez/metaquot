@@ -8,9 +8,15 @@ respectively. *)
 [%%metapackage metapp, findlib]
 [%%metaflag "-open", "Stdcompat"]
 
-let expression_of_default_loc () : Parsetree.expression =
+let expression_of_default_loc () : Ppxlib.expression =
   Metapp.apply (Metapp.Exp.var "!")
-    [Metapp.Exp.ident (Ldot (Lident "Ast_helper", "default_loc"))]
+    [Metapp.Exp.ident
+       (Ldot (Ldot (Lident "Ppxlib", "Ast_helper"), "default_loc"))]
+
+type mapper = {
+    expression : Ppxlib.expression -> Ppxlib.expression;
+    pattern : Ppxlib.pattern -> Ppxlib.pattern;
+  }
 
 module type QuoteValueS = sig
   include Metapp.ValueS
@@ -19,47 +25,61 @@ module type QuoteValueS = sig
 
   val quote_location_stack : _ -> t
 
-  val subst_of_expr : Parsetree.expression -> t
+  val subst_of_expr : Ppxlib.expression -> t
+
+  val get_mapper : mapper -> t -> t
 end
 
-module QuoteExp : QuoteValueS with type t = Parsetree.expression = struct
+module QuoteExp : QuoteValueS with type t = Ppxlib.expression = struct
   include Metapp.Exp
 
-  let quote_location (_ : Location.t) : Parsetree.expression =
+  let quote_location (_ : Location.t) : Ppxlib.expression =
     expression_of_default_loc ()
 
-  let quote_location_stack (_ : _) : Parsetree.expression =
+  let quote_location_stack (_ : _) : Ppxlib.expression =
     Metapp.Exp.nil ()
 
   let subst_of_expr e = e
+
+  let get_mapper mapper = mapper.expression
 end
 
-module QuotePat : QuoteValueS with type t = Parsetree.pattern = struct
+module QuotePat : QuoteValueS with type t = Ppxlib.pattern = struct
   include Metapp.Pat
 
-  let quote_location (_ : Location.t) : Parsetree.pattern =
-    Ast_helper.Pat.any ()
+  let quote_location (_ : Location.t) : Ppxlib.pattern =
+    Ppxlib.Ast_helper.Pat.any ()
 
-  let quote_location_stack (_ : _) : Parsetree.pattern =
-    Ast_helper.Pat.any ()
+  let quote_location_stack (_ : _) : Ppxlib.pattern =
+    Ppxlib.Ast_helper.Pat.any ()
 
-  let subst_of_expr (e : Parsetree.expression) =
+  let subst_of_expr (e : Ppxlib.expression) =
     match e with
     | { pexp_desc = Pexp_ident { txt = Lident txt; loc }} ->
-        Ast_helper.Pat.var { txt; loc }
+        Ppxlib.Ast_helper.Pat.var { txt; loc }
     | { pexp_loc; _ } ->
         Location.raise_errorf ~loc:pexp_loc "Simple variable expected"
+
+  let get_mapper mapper = mapper.pattern
 end
 
 [%%metadef
-let parsetree = Longident.Lident "Parsetree"
+let ppxlib = Longident.Lident "Ppxlib"
 
-let asttypes = Longident.Lident "Asttypes"
+let asttypes = Longident.Ldot (ppxlib, "Asttypes")
+
+let find_module module_name (signature : Types.signature) :
+    Types.signature option =
+  signature |> List.find_map (fun (item : Types.signature_item) ->
+    match item with
+    | Sig_module (ident, _, { md_type = Mty_signature s; _ }, _, _)
+      when Ident.name ident = module_name -> Some s
+    | _ -> None)
 
 let quote_name name =
   Printf.sprintf "%s" name
 
-let quote_of_path (path : Path.t) : Parsetree.expression =
+let quote_of_path (path : Path.t) : Ppxlib.expression =
   let name =
     match Untypeast.lident_of_path path with
     | Lident name | Ldot (Lident "Asttypes", name) -> name
@@ -73,7 +93,7 @@ let quote_of_path (path : Path.t) : Parsetree.expression =
 let index_variables args =
   List.mapi (fun i arg -> Printf.sprintf "x%d" i, arg) args
 
-let rec quote_of_type_expr (ty : Types.type_expr) : Parsetree.expression =
+let rec quote_of_type_expr (ty : Types.type_expr) : Ppxlib.expression =
   match ty.desc with
   | Tvar x ->
       Metapp.Exp.var (quote_name (Option.get x))
@@ -92,12 +112,12 @@ let rec quote_of_type_expr (ty : Types.type_expr) : Parsetree.expression =
             (args |> List.map (fun (x, arg) ->
               Metapp.apply (quote_of_type_expr arg)
                 [Metapp.Exp.var x]))] in
-      Ast_helper.Exp.fun_ Nolabel None pat exp
+      Ppxlib.Ast_helper.Exp.fun_ Nolabel None pat exp
   | _ ->
       assert false
 
 let case_of_ctor (prefix : Longident.t)
-    (declaration : Types.constructor_declaration) : Parsetree.case =
+    (declaration : Types.constructor_declaration) : Ppxlib.case =
   let args =
     match declaration.cd_args with
     | Cstr_tuple args -> args
@@ -114,10 +134,10 @@ let case_of_ctor (prefix : Longident.t)
           (args |> List.map (fun (x, arg) ->
             Metapp.apply (quote_of_type_expr arg)
               [Metapp.Exp.var x]))]] in
-  Ast_helper.Exp.case pat exp
+  Ppxlib.Ast_helper.Exp.case pat exp
 
 let quote_of_record (prefix : Longident.t)
-    (labels : Types.label_declaration list) : Parsetree.case=
+    (labels : Types.label_declaration list) : Ppxlib.case=
   let labels = index_variables labels in
   let pat =
     Metapp.Pat.record (labels |> List.map
@@ -141,14 +161,14 @@ let quote_of_record (prefix : Longident.t)
             Metapp.Exp.of_longident
               (Ldot (prefix, name));
             value]))] in
-  Ast_helper.Exp.case pat exp
+  Ppxlib.Ast_helper.Exp.case pat exp
 
 let quote_of_declaration (prefix : Longident.t) (name : string)
-    (declaration : Types.type_declaration) : Parsetree.value_binding =
+    (declaration : Types.type_declaration) : Ppxlib.value_binding =
   let cases =
     match declaration.type_kind with
     | Type_abstract ->
-        [Ast_helper.Exp.case (Metapp.Pat.var "x")
+        [Ppxlib.Ast_helper.Exp.case (Metapp.Pat.var "x")
           (Metapp.apply
             (quote_of_type_expr (Option.get declaration.type_manifest))
             [Metapp.Exp.var "x"])]
@@ -188,14 +208,14 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     match pat with
     | None -> cases
     | Some pat ->
-        Ast_helper.Exp.case pat [%e
-          Target.mapper.get Mapper.mapper Mapper.mapper
+        Ppxlib.Ast_helper.Exp.case pat [%e
+          Target.get_mapper Mapper.mapper
             (Target.of_payload payload)] :: cases in
   let exp = [%e fun x ->
-    try [%meta (Ast_helper.Exp.match_ [%e x] cases)]
+    try [%meta (Ppxlib.Ast_helper.Exp.match_ [%e x] cases)]
     with Subst { ty = [%meta Metapp.Pat.of_string name]; target } -> target] in
   let target =
-    Ast_helper.Typ.constr
+    Ppxlib.Ast_helper.Typ.constr
       (Metapp.mkloc (Longident.Ldot (Lident "Target", "t"))) [] in
   let param_names =
     declaration.type_params |> List.map (fun (ty : Types.type_expr) ->
@@ -203,14 +223,14 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
       | Tvar (Some name) -> name
       | _ -> assert false) in
   let typ =
-    Ast_helper.Typ.arrow Nolabel
-      (Ast_helper.Typ.constr (Metapp.mkloc
+    Ppxlib.Ast_helper.Typ.arrow Nolabel
+      (Ppxlib.Ast_helper.Typ.constr (Metapp.mkloc
         (Longident.Ldot (prefix, name)))
-        (List.map Ast_helper.Typ.var param_names))
+        (List.map Ppxlib.Ast_helper.Typ.var param_names))
       target in
   let add_param ty typ =
-    Ast_helper.Typ.arrow Nolabel
-      (Ast_helper.Typ.arrow Nolabel (Ast_helper.Typ.var ty) target) typ in
+    Ppxlib.Ast_helper.Typ.arrow Nolabel
+      (Ppxlib.Ast_helper.Typ.arrow Nolabel (Ppxlib.Ast_helper.Typ.var ty) target) typ in
   let typ = List.fold_right add_param param_names typ in
   let typ = [%t: ?subst:(subst StringMap.t) -> [%meta typ]] in
   let typ =
@@ -218,16 +238,16 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     | [] -> typ
     | _ -> Metapp.Typ.poly (List.map Metapp.mkloc param_names) typ in
   let add_param name exp =
-    Ast_helper.Exp.fun_ Nolabel None (Metapp.Pat.var (quote_name name))
+    Ppxlib.Ast_helper.Exp.fun_ Nolabel None (Metapp.Pat.var (quote_name name))
       exp in
   let exp = List.fold_right add_param param_names exp in
   let exp = [%e fun ?(subst = StringMap.empty) -> [%meta exp]] in
   let pat =
-    Ast_helper.Pat.constraint_ (Metapp.Pat.var (quote_name name)) typ in
-  Ast_helper.Vb.mk pat exp
+    Ppxlib.Ast_helper.Pat.constraint_ (Metapp.Pat.var (quote_name name)) typ in
+  Ppxlib.Ast_helper.Vb.mk pat exp
 
 let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
-    (s : Types.signature) : Parsetree.structure_item =
+    (s : Types.signature) : Ppxlib.structure_item =
   let accu_group group accu =
     match group with
     | None -> accu
@@ -238,9 +258,9 @@ let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
         let ((rec_status, accu_group), accu) =
           match (rec_status, group) with
           | (Trec_next, Some group) -> (group, accu)
-          | (Trec_first, _) -> ((Asttypes.Recursive, []), accu_group group accu)
+          | (Trec_first, _) -> ((Ppxlib.Asttypes.Recursive, []), accu_group group accu)
           | (Trec_not, _) ->
-              ((Asttypes.Nonrecursive, []), accu_group group accu)
+              ((Ppxlib.Asttypes.Nonrecursive, []), accu_group group accu)
           | _ -> assert false in
         (Some (rec_status, (id, decl) :: accu_group), accu)
     | None -> (group, accu) in
@@ -249,7 +269,7 @@ let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
   let groups = groups |> List.filter (fun (_, declarations) ->
     filter (declarations |> List.map (fun (id, _) -> Ident.name id))) in
   let s = groups |> List.map (fun (rec_flag, declarations) ->
-    Ast_helper.Str.value rec_flag
+    Ppxlib.Ast_helper.Str.value rec_flag
       (List.map (fun (id, decl) ->
         quote_of_declaration prefix (Ident.name id) decl)
         declarations)) in
@@ -257,22 +277,23 @@ let quote_of_sig (filter : string list -> bool) (prefix : Longident.t)
 
 let () = Findlib.init ()
 
-let compiler_libs = Findlib.package_directory "compiler-libs"
+let compiler_libs = Findlib.package_directory "ppxlib.ast"
 
 let signature_of_cmi filename =
   (Cmi_format.read_cmi (Filename.concat compiler_libs filename)).cmi_sign
 
-let asttypes_signature = signature_of_cmi "asttypes.cmi"
-
-let parsetree_signature = signature_of_cmi "parsetree.cmi"
+let ppxlib_signature =
+  Option.get (find_module "Ast"
+  (Option.get (find_module "OCaml_410"
+    (signature_of_cmi "ppxlib_ast__Versions.cmi"))))
 ]
 
 module type MapperS = sig
-  val mapper : Ast_mapper.mapper
+  val mapper : mapper
 end
 
-module DefaultMapper = struct
-  let mapper = Ast_mapper.default_mapper
+module DefaultMap = struct
+  let mapper = { expression = Fun.id; pattern = Fun.id }
 end
 
 module StringMap = Map.Make (String)
@@ -322,7 +343,7 @@ module Make (Target : QuoteValueS) = struct
 
     [%%meta
        quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
-         asttypes_signature]
+         (Option.get (find_module "Asttypes" ppxlib_signature))]
 
     (* redefined here after constants, because we do not want substitutions on
        string constants. *)
@@ -335,10 +356,10 @@ module Make (Target : QuoteValueS) = struct
 
     [%%meta
        quote_of_sig (fun names ->
-         List.mem "constant" names || List.mem "core_type" names) parsetree
-         parsetree_signature]
+         List.mem "constant" names || List.mem "core_type" names) ppxlib
+         (Option.get (find_module "Parsetree" ppxlib_signature))]
 
-    let subst_of_value_binding (binding : Parsetree.value_binding) :
+    let subst_of_value_binding (binding : Ppxlib.value_binding) :
         string * subst =
       match binding with
       | { pvb_pat = { ppat_desc = Ppat_constraint ({
@@ -356,7 +377,7 @@ module Make (Target : QuoteValueS) = struct
       | { pvb_loc; _ } ->
           Location.raise_errorf ~loc:pvb_loc "Typed value-binding expected"
 
-    let parse_subst (subst : Parsetree.attribute) : subst StringMap.t =
+    let parse_subst (subst : Ppxlib.attribute) : subst StringMap.t =
       match Metapp.Stri.of_payload (Metapp.Attr.payload subst) with
       | { pstr_desc = Pstr_value (Nonrecursive, values)} ->
           List.map subst_of_value_binding values |> List.to_seq |>
@@ -367,7 +388,7 @@ module Make (Target : QuoteValueS) = struct
     let quote_extension
         ((({ txt; loc }, payload), attrs) : Metapp.destruct_extension)
         : Target.t option =
-      Ast_helper.with_default_loc loc @@ fun () ->
+      Ppxlib.Ast_helper.with_default_loc loc @@ fun () ->
       let subst =
         Metapp.Attr.find "subst" attrs |> Option.map parse_subst in
       match txt with
@@ -390,17 +411,17 @@ module Make (Target : QuoteValueS) = struct
       | _ -> None
   end
 
-  let lift (mapper : Ast_mapper.mapper) (e : Target.t) : Target.t =
+  let lift (super : mapper) (e : Target.t) : Target.t =
     let module Mapper = struct
-      let mapper = mapper
+      let mapper = super
     end in
     let module Quoter = Quoter (Mapper) in
-    Ast_helper.with_default_loc (Target.to_loc e) @@ fun () ->
+    Ppxlib.Ast_helper.with_default_loc (Target.to_loc e) @@ fun () ->
     match Option.bind (Target.destruct_extension e) Quoter.quote_extension with
     | Some e -> e
-    | None -> Target.mapper.get Ast_mapper.default_mapper mapper e
+    | None -> Target.get_mapper super e
 
-  include Quoter (DefaultMapper)
+  include Quoter (DefaultMap)
 end
 
 module Exp = Make (QuoteExp)

@@ -10,7 +10,8 @@ let () =
 let () =
   match [%expr match x with c -> .]
     [@subst let c : list = [
-      Ast_helper.Exp.case (Ast_helper.Pat.any ()) (Metapp.Exp.var "x")]] with
+      Ppxlib.Ast_helper.Exp.case (Ppxlib.Ast_helper.Pat.any ())
+        (Metapp.Exp.var "x")]] with
   | { pexp_desc = Pexp_match (
       { pexp_desc = Pexp_ident { txt = Lident "x"; _ }; _ }, [
           { pc_lhs = { ppat_desc = Ppat_any; _};

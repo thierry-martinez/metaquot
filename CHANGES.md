@@ -1,4 +1,6 @@
-# Next version
+# Version 0.3.0, in development
+
+- Port to ppxlib 0.16 / ocaml-migrate-parsetree 2.0.0
 
 - Support for substitutions
 
