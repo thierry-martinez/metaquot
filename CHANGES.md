@@ -2,7 +2,7 @@
 
 - Port to ppxlib 0.16 / ocaml-migrate-parsetree 2.0.0
 
-- Support for substitutions
+- Support for substitutions and loops
 
 # Version 0.2.0, 2020-05-11
 

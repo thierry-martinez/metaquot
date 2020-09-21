@@ -1,0 +1,5 @@
+(test
+  (name for_test)
+  (preprocess (pps metaquot.ppx))
+  (flags -dsource)
+  (libraries compiler-libs.common metapp))

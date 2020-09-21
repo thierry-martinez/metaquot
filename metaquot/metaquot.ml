@@ -6,7 +6,7 @@ The module mainly provides two sub-modules [Metaquot.Exp] and
 respectively. *)
 
 [%%metapackage metapp, findlib]
-[%%metaflag "-open", "Stdcompat"]
+[%%metaflag "-open", "Stdcompat", "-package", "ppxlib.metaquot"]
 
 let expression_of_default_loc () : Ppxlib.expression =
   Metapp.apply (Metapp.Exp.var "!")
@@ -18,6 +18,10 @@ type mapper = {
     pattern : Ppxlib.pattern -> Ppxlib.pattern;
   }
 
+module Eq = struct
+  type ('a, 'b) t = Refl : ('a, 'a) t
+end
+
 module type QuoteValueS = sig
   include Metapp.ValueS
 
@@ -26,6 +30,8 @@ module type QuoteValueS = sig
   val quote_location_stack : _ -> t
 
   val subst_of_expr : Ppxlib.expression -> t
+
+  val is_expr : (t, Ppxlib.expression) Eq.t option
 
   val get_mapper : mapper -> t -> t
 end
@@ -40,6 +46,8 @@ module QuoteExp : QuoteValueS with type t = Ppxlib.expression = struct
     Metapp.Exp.nil ()
 
   let subst_of_expr e = e
+
+  let is_expr = Some Eq.Refl
 
   let get_mapper mapper = mapper.expression
 end
@@ -59,6 +67,8 @@ module QuotePat : QuoteValueS with type t = Ppxlib.pattern = struct
         Ppxlib.Ast_helper.Pat.var { txt; loc }
     | { pexp_loc; _ } ->
         Location.raise_errorf ~loc:pexp_loc "Simple variable expected"
+
+  let is_expr = None
 
   let get_mapper mapper = mapper.pattern
 end
@@ -97,8 +107,15 @@ let rec quote_of_type_expr (ty : Types.type_expr) : Ppxlib.expression =
   match ty.desc with
   | Tvar x ->
       Metapp.Exp.var (quote_name (Option.get x))
+  | Tconstr (Pident list, [arg], _) when Ident.name list = "list" ->
+      Metapp.apply (Metapp.Exp.var (quote_name "list"))
+        ~labels:["subst", [%e subst]] ~optional:["in_list", [%e in_list]]
+        [Ppxlib.Ast_helper.Exp.fun_ (Labelled "subst") None (Metapp.Pat.var "subst")
+          (Ppxlib.Ast_helper.Exp.fun_ (Optional "in_list") None (Metapp.Pat.var "in_list")
+            (quote_of_type_expr arg))]
   | Tconstr (path, args, _) ->
-      Metapp.apply (quote_of_path path) ~labels:["subst", [%e subst]]
+      Metapp.apply (quote_of_path path)
+        ~labels:["subst", [%e subst]] ~optional:["in_list", [%e in_list]]
         (List.map quote_of_type_expr args)
   | Ttuple args ->
       let args = index_variables args in
@@ -137,7 +154,7 @@ let case_of_ctor (prefix : Longident.t)
   Ppxlib.Ast_helper.Exp.case pat exp
 
 let quote_of_record (prefix : Longident.t)
-    (labels : Types.label_declaration list) : Ppxlib.case=
+    (labels : Types.label_declaration list) : Ppxlib.case =
   let labels = index_variables labels in
   let pat =
     Metapp.Pat.record (labels |> List.map
@@ -161,6 +178,60 @@ let quote_of_record (prefix : Longident.t)
             Metapp.Exp.of_longident
               (Ldot (prefix, name));
             value]))] in
+  let exp =
+    match labels |> List.find_map (fun (x, (label : Types.label_declaration)) ->
+      match label.ld_type with
+      | { desc = Tconstr (Pident ident, [], _)}
+        when Ident.name ident = "attributes" -> Some x
+      | _ -> None) with
+    | None -> exp
+    | Some attributes ->
+        [%e let subst, [%meta Metapp.Pat.var attributes] =
+          match Metapp.Attr.chop "subst" [%meta Metapp.Exp.var attributes] with
+          | None -> subst, [%meta Metapp.Exp.var attributes]
+          | Some (attribute, attributes) ->
+              StringMap.union (fun _ _ x -> Some x)
+                subst (parse_subst attribute), attributes in
+        let [%meta Metapp.Pat.var attributes], k =
+          match Metapp.Attr.chop "for" [%meta Metapp.Exp.var attributes] with
+          | None -> [%meta Metapp.Exp.var attributes], Fun.id
+          | Some (attribute, attributes) ->
+              match Metapp.Exp.of_payload (Metapp.Attr.payload attribute) with
+              | [%expr [%e? target] := [%e? list]] ->
+                  let loc = Metapp.Attr.to_loc attribute in
+                  begin match in_list with
+                  | None ->
+                      Location.raise_errorf ~loc
+                        "@for attribute is only allowed in lists"
+                  | Some in_list ->
+                      let list_index = !list_counter in
+                      list_counter := succ list_index;
+                      let list_identifier =
+                        Printf.sprintf "list%d" list_index in
+                      in_list := list_identifier :: !in_list;
+                      let k (e : Target.t) : Target.t =
+                        match Target.is_expr with
+                        | None ->
+                      Location.raise_errorf ~loc
+                        "@for attribute is only allowed in expressions"
+                        | Some Refl ->
+                        [%expr
+                           let list =
+                             match ![%e Metapp.Exp.var list_identifier] with
+                             | None -> [%e list]
+                             | Some list -> list in
+                           match list with
+                           | [] -> raise End_of_list
+                           | hd :: tl ->
+                               [%e Metapp.Exp.var list_identifier] := Some tl;
+                               let [%p QuotePat.subst_of_expr target] = hd in
+                               [%e e]] in
+                      attributes, k
+                  end
+              | _ ->
+                  Location.raise_errorf ~loc:(Metapp.Attr.to_loc attribute)
+                    "Unsupported binding for @for" in
+        k [%meta exp]] in
   Ppxlib.Ast_helper.Exp.case pat exp
 
 let quote_of_declaration (prefix : Longident.t) (name : string)
@@ -232,7 +303,8 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     Ppxlib.Ast_helper.Typ.arrow Nolabel
       (Ppxlib.Ast_helper.Typ.arrow Nolabel (Ppxlib.Ast_helper.Typ.var ty) target) typ in
   let typ = List.fold_right add_param param_names typ in
-  let typ = [%t: ?subst:(subst StringMap.t) -> [%meta typ]] in
+  let typ = [%t: ?subst:subst StringMap.t ->
+    ?in_list:string list ref -> [%meta typ]] in
   let typ =
     match param_names with
     | [] -> typ
@@ -241,7 +313,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
     Ppxlib.Ast_helper.Exp.fun_ Nolabel None (Metapp.Pat.var (quote_name name))
       exp in
   let exp = List.fold_right add_param param_names exp in
-  let exp = [%e fun ?(subst = StringMap.empty) -> [%meta exp]] in
+  let exp = [%e fun ?(subst = StringMap.empty) ?in_list -> [%meta exp]] in
   let pat =
     Ppxlib.Ast_helper.Pat.constraint_ (Metapp.Pat.var (quote_name name)) typ in
   Ppxlib.Ast_helper.Vb.mk pat exp
@@ -307,57 +379,7 @@ module Make (Target : QuoteValueS) = struct
 
     exception Subst of subst
 
-    let unit ?subst = Target.of_unit
-
-    let string ?subst = Target.of_string
-
-    let char ?subst = Target.of_char
-
-    let location ?subst = Target.quote_location
-
-    let location_stack ?subst = Target.quote_location_stack
-
-    let bool ?subst = Target.of_bool
-
-    let longident ?(subst = StringMap.empty) (l : Longident.t) =
-      try
-        match
-          match l with
-          | Lident s -> StringMap.find_opt s subst
-          | _ -> None
-        with
-        | None -> Target.of_longident l
-        | Some subst -> raise (Subst subst)
-      with Subst { ty = "longident"; target } -> target
-
-    let list ?subst f l =
-      try
-        Target.list (List.map f l)
-      with Subst { ty = "list"; target } -> target
-
-    let option ?subst (quote_value : 'a -> Target.t) (option : 'a option)
-        : Target.t =
-      try
-        Target.option (Option.map quote_value option)
-      with Subst { ty = "option"; target } -> target
-
-    [%%meta
-       quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
-         (Option.get (find_module "Asttypes" ppxlib_signature))]
-
-    (* redefined here after constants, because we do not want substitutions on
-       string constants. *)
-    let string ?(subst = StringMap.empty) (s : string) =
-      try
-        match StringMap.find_opt s subst with
-        | None -> Target.of_string s
-        | Some subst -> raise (Subst subst)
-      with Subst { ty = "string"; target } -> target
-
-    [%%meta
-       quote_of_sig (fun names ->
-         List.mem "constant" names || List.mem "core_type" names) ppxlib
-         (Option.get (find_module "Parsetree" ppxlib_signature))]
+    let list_counter = ref 0
 
     let subst_of_value_binding (binding : Ppxlib.value_binding) :
         string * subst =
@@ -384,6 +406,86 @@ module Make (Target : QuoteValueS) = struct
           StringMap.of_seq
       | { pstr_loc; _ } ->
           Location.raise_errorf ~loc:pstr_loc "Let-binding expected"
+
+    let unit ?subst ?in_list = Target.of_unit
+
+    let string ?subst ?in_list = Target.of_string
+
+    let char ?subst ?in_list = Target.of_char
+
+    let location ?subst ?in_list = Target.quote_location
+
+    let location_stack ?subst ?in_list = Target.quote_location_stack
+
+    let bool ?subst ?in_list = Target.of_bool
+
+    let longident ?(subst = StringMap.empty) ?in_list (l : Longident.t) =
+      try
+        match
+          match l with
+          | Lident s -> StringMap.find_opt s subst
+          | _ -> None
+        with
+        | None -> Target.of_longident l
+        | Some subst -> raise (Subst subst)
+      with Subst { ty = "longident"; target } -> target
+
+    let list ?(subst = StringMap.empty) ?in_list (f : subst:subst StringMap.t ->
+      ?in_list:string list ref -> 'a -> Target.t) (l : 'a list) : Target.t =
+      try
+        match Target.is_expr with
+        | None -> Target.list (List.map (f ~subst ?in_list) l)
+        | Some Refl ->
+            let l =
+              l |> List.map (fun item ->
+                    let in_list = ref [] in
+                    let item = f ~subst ~in_list item in
+                    match !in_list with
+                    | [] -> Target.list [item]
+                    | lists ->
+                        let item : Ppxlib.expression =
+                          let loc = !Ppxlib.Ast_helper.default_loc in
+                          [%expr
+                          let exception End_of_list in
+                          let rec loop accu =
+                            match [%e item] with
+                            | exception End_of_list -> List.rev accu
+                            | item ->
+                                loop (item :: accu) in
+                          loop []] in
+                        List.fold_left
+                          (fun item list : Ppxlib.expression ->
+                            let loc = !Ppxlib.Ast_helper.default_loc in
+                            [%expr let [%p Metapp.Pat.var list] = ref None in
+                            [%e item]])
+                          item lists) in
+            let loc = !Ppxlib.Ast_helper.default_loc in
+            [%expr List.concat [%e Target.list l]]
+      with Subst { ty = "list"; target } -> target
+
+    let option ?subst ?in_list (quote_value : 'a -> Target.t)
+        (option : 'a option) : Target.t =
+      try
+        Target.option (Option.map quote_value option)
+      with Subst { ty = "option"; target } -> target
+
+    [%%meta
+       quote_of_sig (fun names -> not (List.mem "constant" names)) asttypes
+         (Option.get (find_module "Asttypes" ppxlib_signature))]
+
+    (* redefined here after constants, because we do not want substitutions on
+       string constants. *)
+    let string ?(subst = StringMap.empty) ?in_list (s : string) =
+      try
+        match StringMap.find_opt s subst with
+        | None -> Target.of_string s
+        | Some subst -> raise (Subst subst)
+      with Subst { ty = "string"; target } -> target
+
+    [%%meta
+       quote_of_sig (fun names ->
+         List.mem "constant" names || List.mem "core_type" names) ppxlib
+         (Option.get (find_module "Parsetree" ppxlib_signature))]
 
     let quote_extension
         ((({ txt; loc }, payload), attrs) : Metapp.destruct_extension)

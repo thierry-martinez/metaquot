@@ -6,6 +6,11 @@ let () =
         pmb_attributes = [];
         _ }; _} -> ()
   | _ -> assert false
+let () =
+  match [%stri type t [@@subst let t : string = "test"]] with
+  | { pstr_desc = Pstr_type (Recursive,
+        [{ ptype_name = { txt = "test"; _ }; _}]); _} -> ()
+  | _ -> assert false
 
 let () =
   match [%expr match x with c -> .]
