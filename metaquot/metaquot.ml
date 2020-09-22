@@ -493,6 +493,16 @@ module Make (Target : QuoteValueS) = struct
       Ppxlib.Ast_helper.with_default_loc loc @@ fun () ->
       let subst =
         Metapp.Attr.find "subst" attrs |> Option.map parse_subst in
+      let prefix = "metaquot." in
+      let txt =
+        if
+          try String.sub txt 0 (String.length prefix) = prefix
+          with Invalid_argument _ -> false
+        then
+          String.sub txt (String.length prefix)
+            (String.length txt - String.length prefix)
+        else
+          txt in
       match txt with
       | "expr" ->
           Some (expression ?subst (Metapp.Exp.of_payload payload))
