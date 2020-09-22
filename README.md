@@ -76,6 +76,16 @@ to use for the substitution: when the identifier appears, the closest
 parent AST node of the given type name is replaced by the given
 expression or pattern. Currently, only binding variable names are
 supported for patterns.
+The `[@subst]` attribute can be carried either by the quotation extension
+itself or by any subelement.
+
+Inside quoted expressions, the `[@for]` attribute can be used to
+repeat an element in an AST node of type `_ list`. For instance,
+`[%str type t1 and t2 and t3]` can
+be written
+`[%str type t
+  [@@subst let t : string = name][@@for name := ["t1"; "t2"; "t3"]]]`.
+The element is repeated in the closest parent AST node of type `_ list`.
 
 In addition to the syntax extension, the `metaquot` package provides
 the [`Metaquot`] module, which contains lifters: the `Metaquot.Exp`
