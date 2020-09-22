@@ -6,7 +6,7 @@ The module mainly provides two sub-modules [Metaquot.Exp] and
 respectively. *)
 
 [%%metapackage metapp, findlib]
-[%%metaflag "-open", "Stdcompat", "-package", "ppxlib.metaquot"]
+[%%metaflag "-open", "Stdcompat"]
 
 let expression_of_default_loc () : Ppxlib.expression =
   Metapp.apply (Metapp.Exp.var "!")
