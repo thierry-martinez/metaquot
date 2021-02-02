@@ -356,7 +356,7 @@ let signature_of_cmi filename =
 
 let ppxlib_signature =
   Option.get (find_module "Ast"
-  (Option.get (find_module "OCaml_410"
+  (Option.get (find_module "OCaml_411"
     (signature_of_cmi "ppxlib_ast__Versions.cmi"))))
 ]
 
