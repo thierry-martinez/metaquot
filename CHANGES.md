@@ -1,3 +1,7 @@
+# Version 0.4.0, 2021-02-17
+
+- Port to ppxlib 0.22 / OCaml 4.12 (by kit-ty-kate, #1)
+
 # Version 0.3.0, 2020-09-22
 
 - Port to ppxlib 0.16 / ocaml-migrate-parsetree 2.0.0
