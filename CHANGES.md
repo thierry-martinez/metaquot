@@ -1,4 +1,4 @@
-# Version 0.4.0, 2021-02-17
+# Version 0.4.0, 2021-02-19
 
 - Port to ppxlib 0.22 / OCaml 4.12 (by kit-ty-kate, #1)
 
