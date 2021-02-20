@@ -2,7 +2,7 @@
 signature depends dynamically from the contents of [Parsetree].
 
 The module mainly provides two sub-modules [Metaquot.Exp] and
-[Metaquot.Pat], which provides lifters for expressions and patterns
+[Metaquot.Pat], which provide lifters for expressions and patterns
 respectively. *)
 
 [%%metapackage metapp, findlib]
