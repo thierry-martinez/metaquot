@@ -93,8 +93,12 @@ let quote_of_path (path : Path.t) : Ppxlib.expression =
   let name =
     match Untypeast.lident_of_path path with
     | Lident name | Ldot (Lident "Asttypes", name) -> name
-    | Ldot (Lident "Location", "t") -> "location"
-    | Ldot (Lident "Longident", "t") -> "longident"
+    | Ldot (Lident "Location", "t") (* ppxlib < 0.23.0 *)
+    | Ldot (Ldot (Lident "Astlib__", "Location"), "t") -> (* ppxlib >= 0.23.0 *)
+        "location"
+    | Ldot (Lident "Longident", "t") (* ppxlib < 0.23.0 *)
+    | Ldot (Ldot (Lident "Astlib__", "Longident"), "t") -> (* ppxlib >= 0.23.0 *)
+        "longident"
     | lident ->
         failwith (Format.asprintf "quote_of_path: %s"
           (String.concat "." (Longident.flatten lident))) in
