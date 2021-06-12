@@ -247,7 +247,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
           (Metapp.apply
             (quote_of_type_expr (Option.get declaration.type_manifest))
             [Metapp.Exp.var "x"])]
-    | Type_variant ctors ->
+    | Type_variant (ctors, _) ->
         List.map (case_of_ctor prefix) ctors
     | Type_record (labels, _) ->
         [quote_of_record prefix labels]
