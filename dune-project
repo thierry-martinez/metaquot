@@ -10,7 +10,7 @@
 (homepage "https://github.com/thierry-martinez/metaquot")
 (bug_reports "https://github.com/thierry-martinez/metaquot")
 (documentation "https://github.com/thierry-martinez/metaquot")
-(version "0.4.0")
+(version "0.5.0")
 
 (package
  (name metaquot)
@@ -24,5 +24,5 @@ metaquot allows to quote OCaml code.
   (ppxlib (>= 0.22.0))
   (ocamlfind (>= 1.8.1))
   (dune (>= 1.11.0))
-  (metapp (>= 0.4.0))
+  (metapp (>= 0.4.1))
   (odoc (and :with-doc (>= 1.5.1)))))

@@ -93,8 +93,11 @@ let quote_of_path (path : Path.t) : Ppxlib.expression =
   let name =
     match Untypeast.lident_of_path path with
     | Lident name | Ldot (Lident "Asttypes", name) -> name
-    | Ldot (Lident "Location", "t") -> "location"
-    | Ldot (Lident "Longident", "t") -> "longident"
+    | Ldot ((Ldot (Lident "Astlib__", "Location") | Lident "Location"), "t") ->
+        "location"
+    | Ldot ((Ldot (Lident "Astlib__", "Longident")
+           | Lident "Longident"), "t") ->
+        "longident"
     | lident ->
         failwith (Format.asprintf "quote_of_path: %s"
           (String.concat "." (Longident.flatten lident))) in
@@ -243,7 +246,10 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
           (Metapp.apply
             (quote_of_type_expr (Option.get declaration.type_manifest))
             [Metapp.Exp.var "x"])]
-    | Type_variant ctors ->
+    | Type_variant _ ->
+        let ctors, _ =
+          Option.get
+            (Metapp.Types.destruct_type_variant declaration.type_kind) in
         List.map (case_of_ctor prefix) ctors
     | Type_record (labels, _) ->
         [quote_of_record prefix labels]
