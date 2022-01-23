@@ -18,6 +18,7 @@ depends: [
   "ocamlfind" {>= "1.8.1"}
   "dune" {>= "1.11.0"}
   "metapp" {>= "0.4.1"}
+  "cppo" {build & >= "1.1.0"}
   "odoc" {with-doc & >= "1.5.1"}
 ]
 build: [

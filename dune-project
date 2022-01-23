@@ -25,4 +25,5 @@ metaquot allows to quote OCaml code.
   (ocamlfind (>= 1.8.1))
   (dune (>= 1.11.0))
   (metapp (>= 0.4.1))
+  (cppo (and :build (>= 1.1.0)))
   (odoc (and :with-doc (>= 1.5.1)))))
