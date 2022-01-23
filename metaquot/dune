@@ -6,3 +6,10 @@
 ; -warning 40: Constructor or label name used out of scope. (OCaml <=4.06.0)
   (flags -open Stdcompat -w +32+34-40)
   (libraries compiler-libs metapp stdcompat))
+
+(rule
+ (target metaquot.ml)
+ (deps (:dep metaquot.ml.in))
+ (action
+  (with-stdout-to %{target}
+   (run %{bin:cppo} -V OCAML:%{ocaml_version} %{dep}))))
