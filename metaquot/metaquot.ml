@@ -107,7 +107,7 @@ let index_variables args =
   List.mapi (fun i arg -> Printf.sprintf "x%d" i, arg) args
 
 let rec quote_of_type_expr (ty : Types.type_expr) : Ppxlib.expression =
-  match ty.desc with
+  match Metapp.Types.get_desc ty with
   | Tvar x ->
       Metapp.Exp.var (quote_name (Option.get x))
   | Tconstr (Pident list, [arg], _) when Ident.name list = "list" ->
@@ -183,8 +183,8 @@ let quote_of_record (prefix : Longident.t)
             value]))] in
   let exp =
     match labels |> List.find_map (fun (x, (label : Types.label_declaration)) ->
-      match label.ld_type with
-      | { desc = Tconstr (Pident ident, [], _)}
+      match Metapp.Types.get_desc label.ld_type with
+      | Tconstr (Pident ident, [], _)
         when Ident.name ident = "attributes" -> Some x
       | _ -> None) with
     | None -> exp
@@ -296,7 +296,7 @@ let quote_of_declaration (prefix : Longident.t) (name : string)
       (Metapp.mkloc (Longident.Ldot (Lident "Target", "t"))) [] in
   let param_names =
     declaration.type_params |> List.map (fun (ty : Types.type_expr) ->
-      match ty.desc with
+      match Metapp.Types.get_desc ty with
       | Tvar (Some name) -> name
       | _ -> assert false) in
   let typ =
