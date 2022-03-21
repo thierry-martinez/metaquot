@@ -1,3 +1,7 @@
+# Version 0.5.1, 2022-03-21
+
+- Port to OCaml 4.14
+
 # Version 0.5.0, 2021-10-04
 
 - Port to OCaml 4.13

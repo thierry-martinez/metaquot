@@ -10,7 +10,7 @@
 (homepage "https://github.com/thierry-martinez/metaquot")
 (bug_reports "https://github.com/thierry-martinez/metaquot")
 (documentation "https://github.com/thierry-martinez/metaquot")
-(version "0.5.0")
+(version "0.5.1")
 
 (package
  (name metaquot)
