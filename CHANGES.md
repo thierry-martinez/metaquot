@@ -1,3 +1,8 @@
+# Development version
+
+- Port to ppxlib 0.26.0
+  (suggested by @nilsbecker, https://github.com/thierry-martinez/ocaml-in-python/issues/1)
+
 # Version 0.5.1, 2022-03-21
 
 - Port to OCaml 4.14
