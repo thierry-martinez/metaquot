@@ -360,9 +360,13 @@ let compiler_libs = Findlib.package_directory "ppxlib.ast"
 let signature_of_cmi filename =
   (Cmi_format.read_cmi (Filename.concat compiler_libs filename)).cmi_sign
 
+let ast_module_name =
+  let major, minor = Metapp.ast_version in
+  Printf.sprintf "OCaml_%d%.2d" major minor
+
 let ppxlib_signature =
   Option.get (find_module "Ast"
-  (Option.get (find_module "OCaml_414"
+  (Option.get (find_module ast_module_name
     (signature_of_cmi "ppxlib_ast__Versions.cmi"))))
 ]
 

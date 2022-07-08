@@ -1,4 +1,4 @@
-# Development version
+# Version 0.5.2, 2022-07-08
 
 - Port to ppxlib 0.26.0
   (suggested by @nilsbecker, https://github.com/thierry-martinez/ocaml-in-python/issues/1)

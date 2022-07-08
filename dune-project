@@ -21,7 +21,7 @@ metaquot allows to quote OCaml code.
  (depends
   (ocaml (>= 4.08.0))
   (stdcompat (>= 12))
-  (ppxlib (>= 0.26.0))
+  (ppxlib (>= 0.22.0))
   (ocamlfind (>= 1.8.1))
   (dune (>= 1.11.0))
   (metapp (>= 0.4.3))
