@@ -23,5 +23,5 @@ metaquot allows to quote OCaml code.
   (stdcompat (>= 12))
   (ppxlib (>= 0.22.0))
   (ocamlfind (>= 1.8.1))
-  (metapp (>= 0.4.3))
+  (metapp (>= 0.4.4))
   (odoc (and :with-doc (>= 1.5.1)))))
