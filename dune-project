@@ -1,4 +1,4 @@
-(lang dune 1.11)
+(lang dune 2.7)
 
 (generate_opam_files true)
 
